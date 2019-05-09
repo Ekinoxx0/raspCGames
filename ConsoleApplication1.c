@@ -70,6 +70,7 @@ int pointPlayer2 = 0;
 
 int main(void)
 {
+
 	wiringPiSetup();
 	setupBargraph();
 	setupLeds();
@@ -103,7 +104,6 @@ int main(void)
 				sens = 0;
 			}
 			writeBargraphUniLed(gameCursor + 1);
-			printf("Loop\n");
 
 			Sleep(60);
 			break;

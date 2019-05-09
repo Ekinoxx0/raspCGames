@@ -9,14 +9,12 @@ int setuped = FALSE;
 int output_pin[50];
 int input_pin[50];
 
-int changeOccured = 0;
-
 int output_pin_state[50];
 int input_pin_state[50];
 
-void (*button_functions_edge_falling[2])(void);
-void (*button_functions_edge_rising[2])(void);
-void (*button_functions_edge_both[2])(void);
+void (*button_functions_edge_falling[50])(void);
+void (*button_functions_edge_rising[50])(void);
+void (*button_functions_edge_both[50])(void);
 
 void color(int t)
 {
@@ -24,86 +22,78 @@ void color(int t)
 	SetConsoleTextAttribute(H, 0 * 16 + t);
 }
 
-void buttonClick(int buttonPin, int cursor, int sleep) {
+void buttonClick(int buttonPin, int sleep) {
 	printf("Button click %d", buttonPin);
 	input_pin_state[buttonPin] = 1;
-		//(*button_functions_edge_rising[cursor])();
-		//button_functions_edge_both[cursor]();
+	if (button_functions_edge_rising[buttonPin] != NULL) {
+		button_functions_edge_rising[buttonPin]();
+	}
+	if (button_functions_edge_both[buttonPin] != NULL) {
+		button_functions_edge_both[buttonPin]();
+	}
 	Sleep(sleep);
 	input_pin_state[buttonPin] = 0;
-		//(*button_functions_edge_falling[cursor])();
-		//button_functions_edge_both[cursor]();
+	if (button_functions_edge_falling[buttonPin] != NULL) {
+		button_functions_edge_falling[buttonPin]();
+	}
+	if (button_functions_edge_both[buttonPin] != NULL) {
+		button_functions_edge_both[buttonPin]();
+	}
 }
 
-void* buttonLoop()
-{
-
+void buttonLoop() {
 	while (1 == 1) {
 		int button;
 		scanf_s("%d", &button);
 		if (button == 1) {
-			buttonClick(X_BUTTON_LEFT, 0, 100);
-		}
-		else if (button == 2) {
-			buttonClick(X_BUTTON_RIGHT, 1, 100);
-		}
-		else {
+			buttonClick(X_BUTTON_LEFT, 100);
+		} else if (button == 2) {
+			buttonClick(X_BUTTON_RIGHT, 100);
+		} else {
 			printf("Unknown button %d", button);
 			exit(5);
 		}
 	}
 }
 
-void* displayLoop()
-{
+void* displayLoop() {
 	while (1 == 1) {
-		if (changeOccured == 0) {}
-		changeOccured = 0;
-
-		printf("\n\n");
 
 		color(9);
-		printf("          Bargraph     ");
 
-		for (int i = 0; i < X_BG_MAX; i++)
-		{
+		for (int i = 0; i < X_BG_MAX; i++) {
+			//printf("(%d)%d.", X_pinBargraph[i], output_pin_state[X_pinBargraph[i]]);
 			if (output_pin_state[X_pinBargraph[i]] == 1) {
 				color(14);
 				printf("+");
-			}
-			else {
+			} else {
 				color(15);
 				printf("|");
 			}
 		}
 		color(15);
-		printf("\n");
-
-		printf("          LED            ");
+		printf("    ");
 
 		if (output_pin_state[X_LED_GREEN] == 1) {
 			color(2);
 			printf("+");
-		}
-		else {
+		} else {
 			color(15);
 			printf("-");
-
 		}
+
 		printf("  ");
 
 		if (output_pin_state[X_LED_RED] == 1) {
 			color(12);
 			printf("+");
-		}
-		else {
+		} else {
 			color(15);
 			printf("-");
 		}
 
 		printf("\n");
-		printf("      \n");
-		Sleep(300);
+		Sleep(50);
 	}
 	return NULL;
 }
@@ -112,8 +102,7 @@ int wiringPiSetup(void){
 	if (setuped == TRUE) {
 		printf("Tried to setup WiringPi twice !\n");
 		exit(5);
-	}
-	else {
+	} else {
 		setuped = TRUE;
 		printf("#############################################\n");
 		printf("#    Welcome to Jocelyn Raspbian Emulator ! #\n");
@@ -151,8 +140,7 @@ void pinMode(int pin, int mode) {
 			if (output_pin[pin] == 1) {
 				printf("Already setuped output_pin %d !\n", pin);
 				exit(7);
-			}
-			else {
+			} else {
 				output_pin[pin] = 1;
 			}
 			break;
@@ -174,8 +162,7 @@ void pinMode(int pin, int mode) {
 			if (input_pin[pin] == 1) {
 				printf("Already setuped input_pin %d !\n", pin);
 				exit(8);
-			}
-			else {
+			} else {
 				input_pin[pin] = 1;
 			}
 			break;
@@ -220,6 +207,5 @@ int  digitalRead(int pin) {
 }
 
 void digitalWrite(int pin, int value) {
-	changeOccured = 1;
-	output_pin_state[pin] = value;
+	output_pin_state[pin] = value > 0 ? 1 : 0;
 }

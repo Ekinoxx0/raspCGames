@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <wiringPi.h>
 #include <math.h>
+#include <unistd.h>
 #define BG_1 7
 #define BG_2 0
 #define BG_3 1
@@ -25,6 +26,8 @@ const int pinBargraph[BG_MAX]={BG_1, BG_2,  BG_3,  BG_4,  BG_5,  BG_6,  BG_7,  B
 #define SIMON 3
 #define ROULETTE 4
 
+#define GAMES_NUMBER 4
+
 void setupBargraph();
 void setupLeds();
 void setupButtons();
@@ -36,6 +39,7 @@ void toggleRedLed();
 void writeBargraph(unsigned char stateLedsBG);
 void writeBargraphUniLed();
 void blankBargraph();
+void fullBargraph();
 int readLeftButton();
 int readRightButton();
 
@@ -46,11 +50,22 @@ double pow(double x, double y);
 float powf(float x, float y);
 long double powl(long double x, long double y);
 
+void changeGamemode(int gamemode);
+void beforeGame();
+void afterGame();
+
 //Corps
+
+int interuptHandling = 0;//Multi-threading handling by stopping core program
 
 int generalState = -1;
 int gameState = 0;
 int gameCursor = 0; //Affichage le jeu sélectionner dans le menu principal
+int sens = 0;
+
+int pointPlayer1 = 0;
+int pointPlayer2 = 0;
+
 
 int main(void)
 {
@@ -63,20 +78,47 @@ int main(void)
 
 	while(TRUE){
 
+		while(interuptHandling == 1){}
+
 		switch(generalState) {
 			case MENU :
 				toggleGreenLed();
+				writeRedLed(0);
+				writeBargraphUniLed(gameCursor+1);
 				delay(200);
 				break;
 
 			case CATCH_ME :
+				if(sens == 0){
+					gameCursor = gameCursor + 1;
+				} else {
+					gameCursor = gameCursor - 1;
+				}
+				if(gameCursor >= BG_MAX-1){
+					sens = 1;
+				} else if(gameCursor <= 0) {
+					sens = 0;
+				}
+				writeBargraphUniLed(gameCursor+1);
+				printf("Loop\n");
+
+				delay(60);
 				break;
 
 			case FILLING_MORE :
 				break;
 
+
+			case SIMON :
+				break;
+
+
+			case ROULETTE :
+				break;
+
+
 			default : 
-				printf("erreur interne du logiciel");
+				printf("erreur interne du logiciel #11\n");
 				toggleRedLed();
 				writeGreenLed(0);
 				blankBargraph();
@@ -93,6 +135,9 @@ int main(void)
 //
 
 void changeGamemode(int gamemode){
+	printf("Changement de mode de jeu de %d pour %d \n", generalState, gamemode);
+	generalState = gamemode;
+
 	switch(generalState) {
 		case MENU :
 			writeBargraphUniLed(gameCursor);
@@ -102,15 +147,85 @@ void changeGamemode(int gamemode){
 			break;
 
 		case CATCH_ME :
+			gameState = 0;
+			gameCursor = 5;
+			fullBargraph();
+			delay(1000);
+			break;
+
+		case FILLING_MORE :
+			writeRedLed(1);
+			writeGreenLed(0);
+			blankBargraph();
+			break;
+
+		default : 
+			printf("erreur interne du logiciel #10\n");
+
+	}
+}
+
+void beforeGame(){
+	switch(generalState) {
+		case MENU :
+			break;
+
+		case CATCH_ME :
+				fullBargraph();
+				delay(200);
+				writeBargraph(0b11111100);
+				delay(500);
+				writeBargraph(0b11110000);
+				delay(500);
+				writeBargraph(0b11000000);
+				delay(500);
 			break;
 
 		case FILLING_MORE :
 			break;
 
 		default : 
-			printf("erreur interne du logiciel");
+			printf("erreur interne du logiciel #20\n");
 
 	}
+}
+
+void afterGame(){
+	switch(generalState) {
+		case MENU :
+			break;
+
+		case CATCH_ME :
+				printf("afterGame called by interupt\n");
+				fullBargraph();
+				delay(200);
+				if(gameCursor == 1){
+					writeGreenLed(1);
+					writeRedLed(0);
+				} else {
+					writeGreenLed(0);
+					writeRedLed(1);
+				}
+				sleep(2);
+				writeGreenLed(0);
+				writeRedLed(0);
+				printf("pointPlayer1 : %d\n", pointPlayer1);
+				printf("pointPlayer2 : %d\n", pointPlayer1);
+				int total = 0;
+				writeBargraph(0b00000000);
+				delay(1500);
+				printf("afterGame ended\n");
+			break;
+
+		case FILLING_MORE :
+			break;
+
+		default : 
+			printf("erreur interne du logiciel #21\n");
+
+	}
+
+	beforeGame();
 }
 
 
@@ -119,31 +234,38 @@ void changeGamemode(int gamemode){
 //
 
 void rightButtonned(){
+	interuptHandling = 1;
 
 	switch(generalState) {
 		case MENU :
 			gameCursor++;
-			if (gameCursor > 1){ 
+			if (gameCursor > GAMES_NUMBER-1){ 
 				gameCursor = 0;
 			}
-
-			writeBargraphUniLed(gameCursor+1);
-
 			break;
 
 		case CATCH_ME :
+			printf("RIGHT : %d / %d\n", gameCursor, sens);
+			if(gameCursor == 7){
+				gameCursor = 1;
+			} else {
+				gameCursor = 0;
+			}
+			afterGame();
 			break;
 
 		case FILLING_MORE :
 			break;
 
 		default : 
-			printf("erreur interne du logiciel");
+			printf("erreur interne du logiciel #1\n");
 	}
 
+	interuptHandling = 0;
 }
 
 void leftButtonned(){
+	interuptHandling = 1;
 
 	switch(generalState) {
 		case MENU :
@@ -151,14 +273,23 @@ void leftButtonned(){
 			break;
 			
 		case CATCH_ME :
+			printf("LEFT : %d / %d\n", gameCursor, sens);
+			if(gameCursor == GAMES_NUMBER-1){
+				gameCursor = 1;
+			} else {
+				gameCursor = 0;
+			}
+			afterGame();
 			break;
 
 		case FILLING_MORE :
 			break;
 
 		default : 
-			printf("erreur interne du logiciel");
+			printf("erreur interne du logiciel #2\n");
 	}
+
+	interuptHandling = 0;
 }
 
 
@@ -204,6 +335,10 @@ void writeBargraphUniLed(int uniLed){
 
 void blankBargraph(){
 	writeBargraph(0b00000000);
+}
+
+void fullBargraph(){
+	writeBargraph(0b11111111);
 }
 
 int IS_GREEN = 0;

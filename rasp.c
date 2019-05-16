@@ -3,55 +3,17 @@
 #include <math.h>
 #include <unistd.h>
 #include <stdlib.h>
-
-#define BG_1 7
-#define BG_2 0
-#define BG_3 1
-#define BG_4 2
-#define BG_5 3
-#define BG_6 4
-#define BG_7 5
-#define BG_8 6
-#define BG_MAX 8
-
-#define LED_GREEN 26
-#define LED_RED 22
-
-#define BUTTON_LEFT 21
-#define BUTTON_RIGHT 29
-
-const int pinBargraph[BG_MAX]={BG_1, BG_2,  BG_3,  BG_4,  BG_5,  BG_6,  BG_7,  BG_8};
+#include "raspLib.h"
 
 #define MENU 0
 #define CATCH_ME 1
 #define FILLING_MORE 2
-#define SIMON 3
-#define ROULETTE 4
+#define ROULETTE 3
 
-#define GAMES_NUMBER 4
-
-void setupBargraph();
-void setupLeds();
-void setupButtons();
-
-void writeGreenLed(int state);
-void writeRedLed(int state);
-void toggleGreenLed();
-void toggleRedLed();
-void writeBargraph(unsigned char stateLedsBG);
-void writeBargraphLed(int led);
-void writeBargraphUniLed(int led);
-void blankBargraph();
-void fullBargraph();
-int readLeftButton();
-int readRightButton();
+#define GAMES_NUMBER 3
 
 void rightButtonned();
 void leftButtonned();
-
-double pow(double x, double y);
-float powf(float x, float y);
-long double powl(long double x, long double y);
 
 void changeGamemode(int gamemode);
 void beforeGame();
@@ -60,18 +22,20 @@ void displayPoints();
 
 //Corps
 
+int resetCounter = 0;//Handle the reset double buttons
+
 int interuptHandling = 0;//Multi-threading handling by stopping core program
 
 int generalState = -1;
 int gameState = 0;
-int gameCursor = 0; //Affichage le jeu sélectionner dans le menu principal
+int playerCursor = 0; //Gestion du curseur du joueur (menu principal / roulette / etc...)
 int sens = 0;
 
 int pointPlayer1 = 0;
 int pointPlayer2 = 0;
 
 int rouletteSpeed = 0;
-int rouletteCursor = 0;
+int gameCursor = 0;//Gestion du curseur du jeu (Curseur roulette, curseur filling_more)
 
 
 int main(void)
@@ -80,60 +44,115 @@ int main(void)
     setupBargraph();
     setupLeds();
     setupButtons();
+	wiringPiISR(BUTTON_RIGHT, INT_EDGE_FALLING, &rightButtonned);
+	wiringPiISR(BUTTON_LEFT, INT_EDGE_FALLING, &leftButtonned);
 
     changeGamemode(MENU);
 
 	while(TRUE){
 
-		while(interuptHandling == 1){}
+		if(readRightButton() == 1 && readLeftButton() == 1){
+			resetCounter++;
+			//Si les deux boutons sont appuyés pendant 10 boucles (dépendant du jeu)
+			if(resetCounter > 10){
+				printf("#########\n");
+				printf("# RESET #\n");
+				printf("#########\n\n\n\n\n");
+    			changeGamemode(MENU);//Retour menu
+			}
+		} else {
+			resetCounter = 0;
+		}
+
+		while(interuptHandling == 1){}//Gestion anti-multithreading des interuptButtons
 
 		switch(generalState) {
 			case MENU :
 				toggleGreenLed();
 				writeRedLed(0);
-				writeBargraphUniLed(gameCursor+1);
+				writeBargraphUniLed(playerCursor+1);
 				delay(200);
 				break;
 
 			case CATCH_ME :
 				if(sens == 0){
-					gameCursor = gameCursor + 1;
+					playerCursor = playerCursor + 1;
 				} else {
-					gameCursor = gameCursor - 1;
+					playerCursor = playerCursor - 1;
 				}
-				if(gameCursor >= BG_MAX-1){
+				if(playerCursor >= BG_MAX-1){
 					sens = 1;
-				} else if(gameCursor <= 0) {
+				} else if(playerCursor <= 0) {
 					sens = 0;
 				}
-				writeBargraphUniLed(gameCursor+1);
+				writeBargraphUniLed(playerCursor+1);
 
 				delay(60);
 				break;
 
 			case FILLING_MORE :
+				if(sens == 0){
+					playerCursor = playerCursor + 1;
+				} else {
+					playerCursor = playerCursor - 1;
+				}
+				if(playerCursor >= gameCursor-1){
+					sens = 1;
+				} else if(playerCursor <= 0) {
+					sens = 0;
+				}
+
+				//Affiche le curseur du jeu
+				int total = 0;
+				if(playerCursor >= 0){
+					total += 1;
+				}
+				if(playerCursor >= 1){
+					total += 2;
+				}
+				if(playerCursor >= 2){
+					total += 4;
+				}
+				if(playerCursor >= 3){
+					total += 8;
+				}
+				if(playerCursor >= 4){
+					total += 16;
+				}
+				if(playerCursor >= 5){
+					total += 32;
+				}
+				if(playerCursor >= 6){
+					total += 64;
+				}
+				if(playerCursor >= 7){
+					total += 128;
+				}
+				writeBargraph(total);
+
+
+				delay(60);
 				break;
 
 
-			case SIMON :
-				break;
-
-
-			case ROULETTE :
-				if(gameState == 0){
-					writeBargraphUniLed(gameCursor+1);
-				} else if(gameState == 1){
-					rouletteCursor++;
-					if(rouletteCursor > 7){
-						rouletteCursor = 0;
+			case ROULETTE ://Boucle du jeu Roulette
+				if(gameState == 0){//Etat de choix du curseur
+					writeBargraphUniLed(playerCursor+1);
+				} else if(gameState == 1){//Etat de roulette lancée
+					gameCursor++;
+					if(gameCursor > 7){
+						gameCursor = 0;
 					}
 					rouletteSpeed *= 1.1;
 
-					blankBargraph();
-					writeBargraphLed(gameCursor+1);
-					writeBargraphLed(rouletteCursor+1);
+					//Si curseur roulette au même endroit, clignottement
+					if(gameCursor == playerCursor){
+						writeBargraph(pow(2, gameCursor));
+					} else { // Sinon affichage des deux curseurs
+						writeBargraph(pow(2, gameCursor) + pow(2, playerCursor));
+					}
 
-					if(rouletteSpeed > 600){
+					if(rouletteSpeed > 100 * (rand()%10)){
 						afterGame();
 						continue;
 					}
@@ -164,6 +183,7 @@ void changeGamemode(int gamemode){
 	printf("Changement de mode de jeu de %d pour %d \n", generalState, gamemode);
 	generalState = gamemode;
 	gameState = 0;
+	playerCursor = 0;
 	gameCursor = 0;
 	sens = 0;
 	pointPlayer1 = 0;
@@ -172,7 +192,7 @@ void changeGamemode(int gamemode){
 	switch(generalState) {
 		case MENU :
 			printf("MENU PRINCIPAL !\n");
-			writeBargraphUniLed(gameCursor);
+			writeBargraphUniLed(playerCursor);
 			writeGreenLed(1);
 			writeRedLed(1);
 			delay(1000);
@@ -191,20 +211,18 @@ void changeGamemode(int gamemode){
 			break;
 
 		case FILLING_MORE :
-			printf("Bienvenue dans CATCH ME !\n");
-			printf("JEU PAS FINI\n");
-			beforeGame();
-			break;
-
-		case SIMON :
-			printf("Bienvenue dans SIMON!\n");
-			printf("JEU PAS FINI\n");
+			printf("Bienvenue dans FILLING MORE !\n");
+			printf("Mode de jeu : 1 joueur\n");
+			printf("Nombre de point à obtenir : 8 points (Remplir la barre)\n");
+			printf("Explication: ...\n");
 			beforeGame();
 			break;
 
 		case ROULETTE :
 			printf("Bienvenue dans ROULETTE !\n");
 			printf("Mode de jeu : 1 joueur\n");
+			printf("Nombre de point à obtenir : 4points\n");
+			printf("Explication: ...\n");
 			beforeGame();
 			break;
 
@@ -215,6 +233,7 @@ void changeGamemode(int gamemode){
 }
 
 void beforeGame(){
+	blankBargraph();
 	writeGreenLed(0);
 	writeRedLed(0);
 
@@ -224,7 +243,7 @@ void beforeGame(){
 
 		case CATCH_ME :
 				gameState = 0;
-				gameCursor = 4;
+				playerCursor = 4;
 				sens = rand() % 2;
 				fullBargraph();
 				delay(200);
@@ -237,19 +256,13 @@ void beforeGame(){
 			break;
 
 		case FILLING_MORE :
-			delay(3000);
-			changeGamemode(MENU);
-			break;
-
-		case SIMON :
-			delay(3000);
-			changeGamemode(MENU);
+			gameCursor = 8;//Initial curseur du jeu
 			break;
 
 		case ROULETTE :
 			rouletteSpeed = 20;
+			playerCursor = 0;
 			gameCursor = 0;
-			rouletteCursor = 0;
 			printf("Sélectionnez votre case...\n");
 			break;
 
@@ -265,7 +278,7 @@ void afterGame(){
 			break;
 
 		case CATCH_ME :
-				if(gameCursor == 1){
+				if(playerCursor == 1){
 					printf("Bien joué !\n");
 					writeGreenLed(1);
 					writeRedLed(0);
@@ -287,13 +300,10 @@ void afterGame(){
 		case FILLING_MORE :
 			break;
 
-		case SIMON :
-			break;
-
 		case ROULETTE :
-			if(gameCursor == rouletteCursor){
+			if(playerCursor == gameCursor){
 				for(int i = 0; i < 3; i++){
-					writeBargraphLed(rouletteCursor+1);
+					writeBargraphUniLed(gameCursor+1);
 					blankBargraph();
 					delay(300);
 				}
@@ -391,33 +401,46 @@ void rightButtonned(){
 	switch(generalState) {
 		case MENU :
 			printf("Sélection mode de jeu suivant, cliquez sur l'autre bouton pour confirmer.\n");
-			gameCursor++;
-			if (gameCursor > GAMES_NUMBER-1){ 
-				gameCursor = 0;
+			playerCursor++;
+			if (playerCursor > GAMES_NUMBER-1){ 
+				playerCursor = 0;
 			}
 			break;
 
 		case CATCH_ME :
 			printf("Bouton appuyé par joueur 1 !\n");
-			if(gameCursor == 7){
+			if(playerCursor == 7){
 				pointPlayer1++;
-				gameCursor = 1;
+				playerCursor = 1;
 			} else {
-				gameCursor = 0;
+				playerCursor = 0;
 			}
 			afterGame();
 			break;
 
 		case FILLING_MORE :
-			break;
-
-		case SIMON:
+			if(playerCursor + 1 == gameCursor){
+				writeGreenLed(1);
+				for(int i = 0; i < 6; i++){
+					blankBargraph();
+					delay(200);
+					fullBargraph();
+					delay(200);
+				}
+				changeGamemode(MENU);
+			} else {
+				writeRedLed(1);
+				delay(2000);
+				writeRedLed(0);
+			}
 			break;
 
 		case ROULETTE:
-			gameCursor++;
-			if (gameCursor > 7){ 
-				gameCursor = 0;
+			if(gameState == 0){
+				playerCursor++;
+				if (playerCursor > 7){ 
+					playerCursor = 0;
+				}
 			}
 			break;
 
@@ -436,16 +459,16 @@ void leftButtonned(){
 
 	switch(generalState) {
 		case MENU :
-			changeGamemode(gameCursor+1);
+			changeGamemode(playerCursor+1);
 			break;
 			
 		case CATCH_ME :
 			printf("Bouton appuyé par joueur 2 !\n");
-			if(gameCursor == 0){
+			if(playerCursor == 0){
 				pointPlayer2++;
-				gameCursor = 1;
+				playerCursor = 1;
 			} else {
-				gameCursor = 0;
+				playerCursor = 0;
 			}
 			afterGame();
 			break;
@@ -453,12 +476,11 @@ void leftButtonned(){
 		case FILLING_MORE :
 			break;
 
-		case SIMON:
-			break;
-
 		case ROULETTE:
-			printf("Lancement de la roulette !\n");
-			gameState = 1;
+			if(gameState == 0){
+				printf("Lancement de la roulette !\n");
+				gameState = 1;
+			}
 			break;
 
 		default : 
@@ -466,93 +488,4 @@ void leftButtonned(){
 	}
 
 	interuptHandling = 0;
-}
-
-void rightButtonnedUp(){
-
-}
-
-void leftButtonnedUp(){
-	
-}
-
-
-//
-// SETUPS
-//
-
-void setupBargraph(){
-	for (int i = 0; i < BG_MAX; i++) {
-        	pinMode(pinBargraph[i], OUTPUT);
-	}
-	blankBargraph();
-}
-
-void setupLeds(){
-	pinMode(LED_GREEN, OUTPUT);
-	pinMode(LED_RED, OUTPUT);
-	writeRedLed(0);
-	writeGreenLed(0);
-}
-void setupButtons(){
-	pinMode(BUTTON_RIGHT, INPUT);
-	pinMode(BUTTON_LEFT, INPUT);
-	wiringPiISR(BUTTON_RIGHT, INT_EDGE_FALLING, &rightButtonned);
-	wiringPiISR(BUTTON_LEFT, INT_EDGE_FALLING, &leftButtonned);
-}
-
-//
-//RELATIVES
-//
-
-void writeBargraph(unsigned char stateLedsBG){
-	for (int i = 0; i < BG_MAX; i++) {
-		int filtre = pow(2,i); 
-        	digitalWrite(pinBargraph[i], stateLedsBG & filtre);
-	}
-}
-
-void writeBargraphLed(int uniLed){
-	writeBargraph(powl(2, uniLed-1));
-}
-
-void writeBargraphUniLed(int uniLed){
-	blankBargraph();
-	writeBargraph(powl(2, uniLed-1));
-}
-
-void blankBargraph(){
-	writeBargraph(0b00000000);
-}
-
-void fullBargraph(){
-	writeBargraph(0b11111111);
-}
-
-int IS_GREEN = 0;
-void writeGreenLed(int state){
-	IS_GREEN = state;
-	digitalWrite(LED_GREEN, state);
-}
-
-int IS_RED = 0;
-void writeRedLed(int state){
-	IS_RED = state;
-	digitalWrite(LED_RED, state);
-}
-
-void toggleGreenLed(){
-	writeGreenLed(IS_GREEN == 0 ? 1 : 0);
-}
-
-void toggleRedLed(){
-	writeRedLed(IS_RED == 0 ? 1 : 0);
-}
-
-int readLeftButton(){
-	return digitalRead(BUTTON_LEFT) == 0 ? 1 : 0;
-}
-
-int readRightButton(){
-	return digitalRead(BUTTON_RIGHT) == 0 ? 1 : 0;
 }

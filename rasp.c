@@ -143,7 +143,7 @@ int main(void)
 					if(gameCursor > 7){
 						gameCursor = 0;
 					}
-					rouletteSpeed *= 1.1;
+					rouletteSpeed = rouletteSpeed * 1.3;
 
 					//Si curseur roulette au même endroit, clignottement
 					if(gameCursor == playerCursor){
@@ -152,7 +152,7 @@ int main(void)
 						writeBargraph(pow(2, gameCursor) + pow(2, playerCursor));
 					}
 
-					if(rouletteSpeed > 100 * (rand()%10)){
+					if(rouletteSpeed > rand() % 400 + 400){ //Fin de la roulette aléatoire dès que l'attente est grande
 						afterGame();
 						continue;
 					}
@@ -191,7 +191,7 @@ void changeGamemode(int gamemode){
 
 	switch(generalState) {
 		case MENU :
-			printf("MENU PRINCIPAL !\n");
+			printf("MENU PRINCIPAL V1 !\n");
 			writeBargraphUniLed(playerCursor);
 			writeGreenLed(1);
 			writeRedLed(1);
@@ -260,7 +260,7 @@ void beforeGame(){
 			break;
 
 		case ROULETTE :
-			rouletteSpeed = 20;
+			rouletteSpeed = 20.0;
 			playerCursor = 0;
 			gameCursor = 0;
 			printf("Sélectionnez votre case...\n");
